@@ -1,0 +1,18 @@
+{
+    "intrinsic_type": "FISHEYE",
+    "image_width": 1440,
+    "image_height": 1440,
+    "fps": 59.94005994005994,
+    "stabelized": false,
+    "intrinsics": {
+        "focal_length": 375.0,
+        "aspect_ratio": 1.0,
+        "principal_pt_x": 720.0,
+        "principal_pt_y": 720.0,
+        "radial_distortion_1": 0.08,
+        "radial_distortion_2": -0.16,
+        "radial_distortion_3": 0.35,
+        "radial_distortion_4": -0.26,
+        "skew": 0.0
+    }
+}

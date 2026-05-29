@@ -30,7 +30,7 @@ def main(session_dir):
         if not input_dir.is_dir():
             input_dir.mkdir()
             print(f"{input_dir.name} subdir don't exits! Creating one and moving all mp4 videos inside.")
-            for mp4_path in list(session.glob('**/*.MP4')) + list(session.glob('**/*.mp4')):
+            for mp4_path in list(session.glob('**/*.MP4')) + list(session.glob('**/*.mp4')) + list(session.glob('**/*.360')):
                 out_path = input_dir.joinpath(mp4_path.name)
                 shutil.move(mp4_path, out_path)
         
@@ -39,7 +39,7 @@ def main(session_dir):
         if (not mapping_vid_path.exists()) and not(mapping_vid_path.is_symlink()):
             max_size = -1
             max_path = None
-            for mp4_path in list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4')):
+            for mp4_path in list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4')) + list(input_dir.glob('**/*.360')):
                 size = mp4_path.stat().st_size
                 if size > max_size:
                     max_size = size
@@ -56,7 +56,7 @@ def main(session_dir):
             serial_start_dict = dict()
             serial_path_dict = dict()
             with ExifToolHelper() as et:
-                for mp4_path in list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4')):
+                for mp4_path in list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4')) + list(input_dir.glob('**/*.360')):
                     if mp4_path.name.startswith('map'):
                         continue
                     
@@ -78,7 +78,7 @@ def main(session_dir):
                 shutil.move(path, out_path)
 
         # look for mp4 video in all subdirectories in input_dir
-        input_mp4_paths = list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4'))
+        input_mp4_paths = list(input_dir.glob('**/*.MP4')) + list(input_dir.glob('**/*.mp4')) + list(input_dir.glob('**/*.360'))
         print(f'Found {len(input_mp4_paths)} MP4 videos')
 
         with ExifToolHelper() as et:
