@@ -28,10 +28,15 @@ from umi.common.cv_util import draw_predefined_mask
 @click.option('-d', '--docker_image', default="chicheng/orb_slam3:latest")
 @click.option('-np', '--no_docker_pull', is_flag=True, default=False, help="pull docker image from docker hub")
 @click.option('-nm', '--no_mask', is_flag=True, default=False, help="Whether to mask out gripper and mirrors. Set if map is created with bare GoPro no on gripper.")
-def main(input_dir, map_path, docker_image, no_docker_pull, no_mask):
-    video_dir = pathlib.Path(os.path.expanduser(input_dir)).absolute()
-    for fn in ['raw_video.mp4', 'imu_data.json']:
-        assert video_dir.joinpath(fn).is_file()
+@click.option('--stereo', is_flag=True, default=False, help='Use the Stereo-Inertial ORB-SLAM3 pipeline for dual-lens 360 cameras.')
+def main(input_dir, map_path, docker_image, no_docker_pull, no_mask, stereo):
+    video_dir = pathlib.Path(os.path.expanduser(input_dir)).absolute()    
+    if stereo:
+        for fn in ['left_video.mp4', 'right_video.mp4', 'imu_data.csv']:
+            assert video_dir.joinpath(fn).is_file(), f"Missing {fn} for stereo mode"
+    else:
+        for fn in ['raw_video.mp4', 'imu_data.json']:
+            assert video_dir.joinpath(fn).is_file(), f"Missing {fn} for monocular mode"
 
     if map_path is None:
         map_path = video_dir.joinpath('map_atlas.osa')
@@ -68,25 +73,42 @@ def main(input_dir, map_path, docker_image, no_docker_pull, no_mask):
     map_mount_target = pathlib.Path('/map').joinpath(map_mount_source.name)
 
     # run SLAM
-    cmd = [
-        'docker',
-        'run',
-        '--rm', # delete after finish
-        '--volume', str(video_dir) + ':' + '/data',
-        '--volume', str(map_mount_source.parent) + ':' + str(map_mount_target.parent),
-        docker_image,
-        '/ORB_SLAM3/Examples/Monocular-Inertial/gopro_slam',
-        '--vocabulary', '/ORB_SLAM3/Vocabulary/ORBvoc.txt',
-        '--setting', '/ORB_SLAM3/Examples/Monocular-Inertial/gopro10_maxlens_fisheye_setting_v1_720.yaml',
-        '--input_video', str(video_path),
-        '--input_imu_json', str(json_path),
-        '--output_trajectory_csv', str(csv_path),
-        '--save_map', str(map_mount_target)
-    ]
-    if not no_mask:
-        cmd.extend([
-            '--mask_img', str(mask_path)
-        ])
+    if stereo:
+        print("Initializing Stereo-Inertial SLAM Engine...")
+        cmd = [
+            'docker', 'run', '--rm',
+            '--volume', f'{str(video_dir)}:/data',
+            '--volume', f'{str(video_dir)}:/map',
+            'jshyunbin/orb_slam3:latest',
+            '/ORB_SLAM3/Examples/Stereo-Inertial/realsense_slam',
+            '--vocabulary', '/ORB_SLAM3/Vocabulary/ORBvoc.txt',
+            '--setting', '/ORB_SLAM3/Examples/Stereo-Inertial/RealSense_D435i.yaml',
+            '--input_video_l', '/data/left_video.mp4',
+            '--input_video_r', '/data/right_video.mp4',
+            '--input_imu_csv', '/data/imu_data.csv',
+            '--output_trajectory_csv', '/data/mapping_camera_trajectory.csv',
+            '--save_map', '/map/map_atlas.osa'
+        ]
+        if not no_mask:
+            cmd.extend(['--ir_l_mask', str(mask_path), '--ir_r_mask', str(mask_path)])
+            
+    else:
+        print("Initializing Monocular-Inertial SLAM Engine...")
+        cmd = [
+            'docker', 'run', '--rm',
+            '--volume', f'{str(video_dir)}:/data',
+            '--volume', f'{str(video_dir)}:/map',
+            'chicheng/orb_slam3:latest',
+            '/ORB_SLAM3/Examples/Monocular-Inertial/gopro_slam',
+            '--vocabulary', '/ORB_SLAM3/Vocabulary/ORBvoc.txt',
+            '--setting', '/ORB_SLAM3/Examples/Monocular-Inertial/gopro10_maxlens_fisheye_setting_v1_720.yaml',
+            '--input_video', '/data/raw_video.mp4',
+            '--input_imu_json', '/data/imu_data.json',
+            '--output_trajectory_csv', '/data/mapping_camera_trajectory.csv',
+            '--save_map', '/map/map_atlas.osa'
+        ]
+        if not no_mask:
+            cmd.extend(['--mask_img', str(mask_path)])
 
     stdout_path = video_dir.joinpath('slam_stdout.txt')
     stderr_path = video_dir.joinpath('slam_stderr.txt')
