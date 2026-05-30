@@ -31,13 +31,15 @@ def split_360_video(input_path: pathlib.Path, output_dir: pathlib.Path):
     
     cmd_left = [
         'ffmpeg', '-y', '-i', str(input_path),
-        '-map', '0:0', '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p',
+        '-map', '0:v:0',           # Target the FIRST video stream (Front Lens)
+        '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p',
         str(left_video_path)
     ]
     
     cmd_right = [
         'ffmpeg', '-y', '-i', str(input_path),
-        '-map', '0:1', '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p',
+        '-map', '0:v:1',           # Target the SECOND video stream (Back Lens)
+        '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p',
         str(right_video_path)
     ]
 

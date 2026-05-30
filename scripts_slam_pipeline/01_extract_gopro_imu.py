@@ -34,19 +34,19 @@ def main(docker_image, num_workers, no_docker_pull, session_dir):
         with tqdm(total=len(input_video_dirs)) as pbar:
             for video_dir in tqdm(input_video_dirs):
                 video_dir = video_dir.absolute()
-                if video_dir.joinpath('imu_data.json').is_file():
-                    print(f"imu_data.json already exists, skipping {video_dir.name}")
+                if video_dir.joinpath('imu_data.csv').is_file():
+                    print(f"imu_data.csv already exists, skipping {video_dir.name}")
                     pbar.update(1)
                     continue
 
                 video_path = video_dir.joinpath('raw_video.mp4')
-                json_path = video_dir.joinpath('imu_data.json')
+                csv_path = video_dir.joinpath('imu_data.csv')
 
                 # Run the native GoPro Max 2 telemetry extraction adapter synchronously
                 print(f"Extracting telemetry for {video_dir.name}...")
-                extract_max2_imu(video_path, json_path)
+                extract_max2_imu(video_path, csv_path)
 
-                if json_path.exists():
+                if csv_path.exists():
                     pbar.update(1)
 
         print("Done!")

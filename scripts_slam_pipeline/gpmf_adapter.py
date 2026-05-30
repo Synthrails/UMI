@@ -1,69 +1,90 @@
 import subprocess
 import re
-import json
 import pathlib
+import csv
+import numpy as np
 
-def extract_max2_imu(video_path: pathlib.Path, json_path: pathlib.Path):
+def extract_max2_imu(video_path: pathlib.Path, csv_path: pathlib.Path):
     """
-    Executes the compiled GoPro gpmfdemo binary using a dynamically calculated 
-    relative path, parses its text stream, interpolates high-frequency timestamps, 
-    and saves a UMI-compatible imu_data.json file.
+    Executes the compiled GoPro gpmfdemo binary, parses its text stream, 
+    interpolates the slower Accelerometer data to match the faster Gyroscope 
+    clock, and saves a RealSense-compatible imu_data.csv file.
     """
-    # 1. Dynamically locate the gpmfdemo binary relative to this script's position
-    # __file__ is synthrails/slam/universal_manipulation_interface/scripts_slam_pipeline/gpmf_adapter.py
     script_dir = pathlib.Path(__file__).parent.resolve()
-    
-    # Move up two levels to get to the synthrails/slam/ root
     slam_root = script_dir.parents[1] 
     
-    # Build the path down into the compiled parser folder
     gpmf_executable = slam_root.joinpath('gpmf-parser', 'demo', 'gpmfdemo')
 
     if not gpmf_executable.exists():
         raise FileNotFoundError(
             f"Could not locate gpmfdemo binary at verified relative path: {gpmf_executable}\n"
-            "Please ensure gpmf-parser is cloned, compiled via 'make', and placed "
-            "side-by-side with the universal_manipulation_interface directory."
+            "Please ensure gpmf-parser is compiled."
         )
 
     print(f"Executing local C-parser on {video_path.name}...")
     
-    # 2. Run gpmfdemo synchronously to extract the full telemetry stream
+    # Run gpmfdemo synchronously
     result = subprocess.run([str(gpmf_executable), str(video_path), '-a', '-f'], capture_output=True, text=True, errors='replace')
     output = result.stdout
-
-    # Initialize the standardized UMI data dictionary layout expected by ORB-SLAM3
-    imu_data = {"accelerometer": [], "gyroscope": []}
     
-    # Regular expressions to parse text stream values and summary sampling rates
     accl_pattern = re.compile(r'ACCL\s+([-\d.]+)m/s.,\s+([-\d.]+)m/s.,\s+([-\d.]+)m/s.')
     gyro_pattern = re.compile(r'GYRO\s+([-\d.]+)rad/s,\s+([-\d.]+)rad/s,\s+([-\d.]+)rad/s')
     rate_pattern = re.compile(r'([A-Z]{4}) sampling rate = ([\d.]+)Hz \(time ([\d.]+) to')
 
-    # 3. Parse all text stream rows extracted by the binary
     raw_accl = accl_pattern.findall(output)
     raw_gyro = gyro_pattern.findall(output)
-
-    # 4. Extract timing metadata block from the bottom summary table
     rates = {match[1]: {'hz': float(match[2]), 'start': float(match[3])} for match in rate_pattern.finditer(output)}
 
-    # 5. Process Accelerometer (Interpolate timestamps mathematically for each sample)
+    # Process Accelerometer Arrays
+    accel_times = []
+    accel_vals = []
     if 'ACCL' in rates and raw_accl:
         start_time = rates['ACCL']['start']
         time_step = 1.0 / rates['ACCL']['hz']
         for i, (x, y, z) in enumerate(raw_accl):
-            timestamp = start_time + (i * time_step)
-            imu_data["accelerometer"].append([timestamp, float(x), float(y), float(z)])
+            accel_times.append(start_time + (i * time_step))
+            accel_vals.append([float(x), float(y), float(z)])
 
-    # 6. Process Gyroscope (Interpolate timestamps mathematically for each sample)
+    # Process Gyroscope Arrays
+    gyro_times = []
+    gyro_vals = []
     if 'GYRO' in rates and raw_gyro:
         start_time = rates['GYRO']['start']
         time_step = 1.0 / rates['GYRO']['hz']
         for i, (x, y, z) in enumerate(raw_gyro):
-            timestamp = start_time + (i * time_step)
-            imu_data["gyroscope"].append([timestamp, float(x), float(y), float(z)])
+            gyro_times.append(start_time + (i * time_step))
+            gyro_vals.append([float(x), float(y), float(z)])
 
-    # 7. Output the standardized structure back to your session folder
-    with open(json_path, 'w') as f:
-        json.dump(imu_data, f)
-    
+    if not accel_times or not gyro_times:
+        print("Warning: Missing IMU data in this video track!")
+        return
+
+    # Convert to Numpy Arrays for fast math
+    accel_times = np.array(accel_times)
+    accel_vals = np.array(accel_vals)
+    gyro_times = np.array(gyro_times)
+    gyro_vals = np.array(gyro_vals)
+
+    # The Math: Interpolate Accel X, Y, Z to perfectly align with Gyro timestamps
+    interp_accel_x = np.interp(gyro_times, accel_times, accel_vals[:, 0])
+    interp_accel_y = np.interp(gyro_times, accel_times, accel_vals[:, 1])
+    interp_accel_z = np.interp(gyro_times, accel_times, accel_vals[:, 2])
+
+    # Output the CSV matching RealSense formatting requirements
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        # Write the header (The C++ binary explicitly skips line 1, so we must provide it)
+        writer.writerow(['timestamp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz'])
+        
+        for i in range(len(gyro_times)):
+            writer.writerow([
+                f"{gyro_times[i]:.6f}",
+                f"{interp_accel_x[i]:.6f}",
+                f"{interp_accel_y[i]:.6f}",
+                f"{interp_accel_z[i]:.6f}",
+                f"{gyro_vals[i, 0]:.6f}",
+                f"{gyro_vals[i, 1]:.6f}",
+                f"{gyro_vals[i, 2]:.6f}"
+            ])
+            
+    print("Telemetry interpolation and CSV export complete.")
