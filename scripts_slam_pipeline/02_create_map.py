@@ -29,9 +29,17 @@ from umi.common.cv_util import draw_predefined_mask
 @click.option('-np', '--no_docker_pull', is_flag=True, default=False, help="pull docker image from docker hub")
 @click.option('-nm', '--no_mask', is_flag=True, default=False, help="Whether to mask out gripper and mirrors. Set if map is created with bare GoPro no on gripper.")
 @click.option('--stereo', is_flag=True, default=False, help='Use the Stereo-Inertial ORB-SLAM3 pipeline for dual-lens 360 cameras.')
-def main(input_dir, map_path, docker_image, no_docker_pull, no_mask, stereo):
+@click.option('-y', '--yaml_path', default=None, help='YAML file to use for stereo calibration')
+def main(input_dir, map_path, docker_image, no_docker_pull, no_mask, stereo, yaml_path):
     video_dir = pathlib.Path(os.path.expanduser(input_dir)).absolute()    
     if stereo:
+        if yaml_path is None:
+            print("Error: --yaml_path is required when running in --stereo mode!")
+            exit(1)
+        
+        yaml_path = pathlib.Path(os.path.expanduser(yaml_path)).absolute()
+        assert yaml_path.is_file(), f"Cannot find YAML file: {yaml_path}"
+
         for fn in ['left_video.mp4', 'right_video.mp4', 'imu_data.csv']:
             assert video_dir.joinpath(fn).is_file(), f"Missing {fn} for stereo mode"
     else:
@@ -79,10 +87,11 @@ def main(input_dir, map_path, docker_image, no_docker_pull, no_mask, stereo):
             'docker', 'run', '--rm',
             '--volume', f'{str(video_dir)}:/data',
             '--volume', f'{str(video_dir)}:/map',
+            '--volume', f'{str(yaml_path)}:/setting.yaml',  # <--- Mounts the YAML into the container
             'jshyunbin/orb_slam3:latest',
             '/ORB_SLAM3/Examples/Stereo-Inertial/realsense_slam',
             '--vocabulary', '/ORB_SLAM3/Vocabulary/ORBvoc.txt',
-            '--setting', '/ORB_SLAM3/Examples/Stereo-Inertial/RealSense_D435i.yaml',
+            '--setting', '/setting.yaml',                   # <--- Points the C++ engine to the mounted file
             '--input_video_l', '/data/left_video.mp4',
             '--input_video_r', '/data/right_video.mp4',
             '--input_imu_csv', '/data/imu_data.csv',
